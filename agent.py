@@ -255,7 +255,7 @@ async def _ask_agent_streaming_async(
             })
     
     session.on(handle_event)
-    await session.send_and_wait({"prompt": message})
+    await session.send_and_wait({"prompt": message}, 600000)  # 10 min timeout (ms)
 
 
 async def _ask_agent_async(
@@ -287,7 +287,7 @@ async def _ask_agent_async(
         session = await _get_or_create_session(client, conversation_key, agent_slugs, skill_slugs)
     
     # Send the current message - session automatically maintains context
-    response = await session.send_and_wait({"prompt": message})
+    response = await session.send_and_wait({"prompt": message}, 600000)  # 10 min timeout (ms)
     
     return response.data.content if response and response.data else ""
 
@@ -360,4 +360,4 @@ def ask_agent(
             agent_slugs, skill_slugs, ui_session_id,
         ), loop
     )
-    return future.result(timeout=120)  # 2 minute timeout
+    return future.result(timeout=300)  # 5 minute timeout for long-running tasks
