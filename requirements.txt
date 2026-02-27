@@ -1,0 +1,6 @@
+flask
+flask-cors
+
+# GitHub Copilot SDK Demo - Requirements
+github-copilot-sdk
+pydantic
