@@ -4,3 +4,6 @@ flask-cors
 # GitHub Copilot SDK Demo - Requirements
 github-copilot-sdk
 pydantic
+
+# WhatsApp integration via Twilio
+twilio

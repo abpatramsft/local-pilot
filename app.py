@@ -9,9 +9,13 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from agent import ask_agent, ask_agent_streaming, load_agents, list_skill_directories
 from local_sessions import list_local_sessions, get_session_messages, fetch_sessions_sync
+from whatsapp import register_whatsapp_routes
 
 app = Flask(__name__)
 CORS(app)  # required so the HTML file (file://) can call localhost
+
+# Register WhatsApp webhook (only activates if twilio_config.py is filled in)
+register_whatsapp_routes(app)
 
 
 @app.route("/health", methods=["GET"])
