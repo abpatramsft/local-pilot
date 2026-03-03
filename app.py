@@ -7,7 +7,7 @@ import json
 import threading
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from agent import ask_agent, ask_agent_streaming, load_agents, list_skill_directories, list_mcp_servers
+from agent import ask_agent, ask_agent_streaming, list_skill_directories, list_mcp_servers
 from local_sessions import list_local_sessions, get_session_messages, fetch_sessions_sync
 from whatsapp import register_whatsapp_routes
 
@@ -60,17 +60,7 @@ def local_session_detail(session_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ── Agent & Skill Endpoints ───────────────────────────────────────────────────────────
-
-@app.route("/agents", methods=["GET"])
-def list_agents_endpoint():
-    """Return list of available custom agents from the agents/ directory."""
-    try:
-        agents = load_agents()
-        return jsonify({"agents": agents})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+# ── Skill & MCP Endpoints ───────────────────────────────────────────────────────────────
 
 @app.route("/skills", methods=["GET"])
 def list_skills_endpoint():
@@ -98,7 +88,6 @@ def chat():
     message = data.get("message", "").strip()
     history = data.get("history", [])   # list of {role, text} dicts
     resumed_session_id = data.get("resumed_session_id")
-    agent_slugs = data.get("agents", [])
     skill_slugs = data.get("skills", [])
     mcp_slugs = data.get("mcps", [])
     ui_session_id = data.get("ui_session_id")
@@ -110,7 +99,6 @@ def chat():
         reply = ask_agent(
             message, history,
             resumed_session_id=resumed_session_id,
-            agent_slugs=agent_slugs,
             skill_slugs=skill_slugs,
             ui_session_id=ui_session_id,
             mcp_slugs=mcp_slugs,
@@ -127,7 +115,6 @@ def chat_stream():
     message = data.get("message", "").strip()
     history = data.get("history", [])
     resumed_session_id = data.get("resumed_session_id")
-    agent_slugs = data.get("agents", [])
     skill_slugs = data.get("skills", [])
     mcp_slugs = data.get("mcps", [])
     ui_session_id = data.get("ui_session_id")
@@ -140,7 +127,6 @@ def chat_stream():
             for event in ask_agent_streaming(
                 message, history,
                 resumed_session_id=resumed_session_id,
-                agent_slugs=agent_slugs,
                 skill_slugs=skill_slugs,
                 ui_session_id=ui_session_id,
                 mcp_slugs=mcp_slugs,
