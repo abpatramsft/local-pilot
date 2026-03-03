@@ -8,8 +8,10 @@ pipeline, and replies back.
 Commands:
   /skills              — list available skills
   /mcps                — list available MCP servers
+  /agents              — list available custom agents
   /use #slug #slug     — select skills for your session
   /use %slug %slug     — select MCP servers for your session
+  /use @slug @slug     — select custom agents for your session
   /config              — show current session config
   /sessions            — list recent local Copilot sessions
   /resume <id>         — resume a local Copilot session
@@ -23,7 +25,7 @@ from flask import request
 from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client as TwilioClient
 
-from agent import ask_agent, list_skill_directories, list_mcp_servers
+from agent import ask_agent, list_skill_directories, list_mcp_servers, list_custom_agents
 from local_sessions import list_local_sessions, get_session_messages, fetch_sessions_sync
 
 # ── Per-phone session state ────────────────────────────────────────────────────
@@ -38,6 +40,7 @@ def _get_wa_session(sender: str) -> dict:
             "history": [],
             "skills": [],
             "mcps": [],
+            "agents": [],
             "resumed_session_id": None,
         }
     return _wa_sessions[sender]
@@ -58,8 +61,10 @@ def _handle_help(session: dict = None) -> str:
         "💬 Just type naturally to chat with the agent.\n\n"
         "*/skills* — list available skills\n"
         "*/mcps* — list available MCP servers\n"
+        "*/agents* — list available custom agents\n"
         "*/use #code-review* — select skills\n"
         "*/use %workiq* — select MCP servers\n"
+        "*/use @web-search* — select custom agents\n"
         "*/config* — show current session config\n"
         "*/sessions* — list local Copilot sessions\n"
         "*/resume <id>* — resume a session\n"
@@ -91,15 +96,28 @@ def _handle_mcps() -> str:
     return "\n".join(lines)
 
 
+def _handle_agents() -> str:
+    agents = list_custom_agents()
+    if not agents:
+        return "No custom agents available."
+    lines = ["*Available Custom Agents:*\n"]
+    for a in agents:
+        lines.append(f"  @{a['slug']} — {a.get('description', a.get('name', ''))}")
+    lines.append("\nUse */use @slug* to activate one or more.")
+    return "\n".join(lines)
+
+
 def _handle_use(args: str, session: dict) -> str:
-    """Parse /use #skill1 #skill2 %mcp1 %mcp2 and update session."""
+    """Parse /use #skill1 #skill2 %mcp1 %mcp2 @agent1 @agent2 and update session."""
     tokens = args.split()
     new_skills = [t[1:] for t in tokens if t.startswith("#")]
     new_mcps   = [t[1:] for t in tokens if t.startswith("%")]
+    new_agents = [t[1:] for t in tokens if t.startswith("@")]
 
     # Validate slugs
     valid_skills = {s["slug"] for s in list_skill_directories()}
     valid_mcps   = {m["slug"] for m in list_mcp_servers()}
+    valid_agents = {a["slug"] for a in list_custom_agents()}
 
     bad = []
     for slug in new_skills:
@@ -108,35 +126,44 @@ def _handle_use(args: str, session: dict) -> str:
     for slug in new_mcps:
         if slug not in valid_mcps:
             bad.append(f"%{slug}")
+    for slug in new_agents:
+        if slug not in valid_agents:
+            bad.append(f"@{slug}")
 
     if bad:
-        return f"❌ Unknown: {', '.join(bad)}\nUse */skills* or */mcps* to see what's available."
+        return f"❌ Unknown: {', '.join(bad)}\nUse */skills*, */mcps*, or */agents* to see what's available."
 
     if new_skills:
         session["skills"] = new_skills
     if new_mcps:
         session["mcps"] = new_mcps
+    if new_agents:
+        session["agents"] = new_agents
 
-    if not new_skills and not new_mcps:
-        return "Usage: */use #skill-slug %mcp-slug*\nExample: */use #code-review %workiq*"
+    if not new_skills and not new_mcps and not new_agents:
+        return "Usage: */use #skill-slug %mcp-slug @agent-slug*\nExample: */use #code-review %workiq @web-search*"
 
     parts = []
     if session["skills"]:
         parts.append("Skills: " + ", ".join(f"#{s}" for s in session["skills"]))
     if session["mcps"]:
         parts.append("MCPs: " + ", ".join(f"%{s}" for s in session["mcps"]))
+    if session["agents"]:
+        parts.append("Agents: " + ", ".join(f"@{a}" for a in session["agents"]))
     return "✅ Session updated.\n" + "\n".join(parts)
 
 
 def _handle_config(session: dict) -> str:
     skills_str = ", ".join(f"#{s}" for s in session["skills"]) if session["skills"] else "none"
     mcps_str   = ", ".join(f"%{s}" for s in session.get("mcps", [])) if session.get("mcps") else "none"
+    agents_str = ", ".join(f"@{a}" for a in session.get("agents", [])) if session.get("agents") else "none"
     resumed = session["resumed_session_id"] or "none"
     msg_count = len(session["history"])
     return (
         f"*Current Session Config:*\n\n"
         f"Skills: {skills_str}\n"
         f"MCPs: {mcps_str}\n"
+        f"Agents: {agents_str}\n"
         f"Resumed from: {resumed}\n"
         f"Messages in history: {msg_count}"
     )
@@ -146,8 +173,9 @@ def _handle_new(session: dict) -> str:
     session["history"] = []
     session["skills"] = []
     session["mcps"] = []
+    session["agents"] = []
     session["resumed_session_id"] = None
-    return "🆕 Session reset. You're starting fresh.\nUse */use* to set skills/MCPs, or just start chatting."
+    return "🆕 Session reset. You're starting fresh.\nUse */use* to set skills/MCPs/agents, or just start chatting."
 
 
 def _handle_sessions() -> str:
@@ -203,7 +231,7 @@ def _handle_resume(args: str, session: dict) -> str:
     return (
         f"📂 Resumed: *{summary}*\n"
         f"History loaded ({len(session['history'])} messages). Send a message to continue.\n"
-        f"Use */use #skill %mcp* to add skills or MCP servers at any time."
+        f"Use */use #skill %mcp @agent* to add skills, MCPs, or agents at any time."
     )
 
 
@@ -230,6 +258,7 @@ def _handle_chat(message: str, session: dict, twilio_client, twilio_from: str, s
                 resumed_session_id=session.get("resumed_session_id"),
                 skill_slugs=session.get("skills", []),
                 mcp_slugs=session.get("mcps", []),
+                agent_slugs=session.get("agents", []),
             )
             result_holder["reply"] = reply
         except Exception as e:
@@ -315,6 +344,8 @@ def register_whatsapp_routes(app):
             reply = _handle_skills()
         elif text.lower() == "/mcps":
             reply = _handle_mcps()
+        elif text.lower() == "/agents":
+            reply = _handle_agents()
         elif text.lower().startswith("/use "):
             reply = _handle_use(text[5:], session)
         elif text.lower() == "/use":

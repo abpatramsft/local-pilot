@@ -7,7 +7,7 @@ import json
 import threading
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from agent import ask_agent, ask_agent_streaming, list_skill_directories, list_mcp_servers
+from agent import ask_agent, ask_agent_streaming, list_skill_directories, list_mcp_servers, list_custom_agents
 from local_sessions import list_local_sessions, get_session_messages, fetch_sessions_sync
 from whatsapp import register_whatsapp_routes
 
@@ -60,7 +60,7 @@ def local_session_detail(session_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ── Skill & MCP Endpoints ───────────────────────────────────────────────────────────────
+# ── Skill, MCP & Agent Endpoints ──────────────────────────────────────────────────────────────
 
 @app.route("/skills", methods=["GET"])
 def list_skills_endpoint():
@@ -82,6 +82,16 @@ def list_mcps_endpoint():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/agents", methods=["GET"])
+def list_agents_endpoint():
+    """Return list of available custom agents from agents.json."""
+    try:
+        agents = list_custom_agents()
+        return jsonify({"agents": agents})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data    = request.json or {}
@@ -90,6 +100,7 @@ def chat():
     resumed_session_id = data.get("resumed_session_id")
     skill_slugs = data.get("skills", [])
     mcp_slugs = data.get("mcps", [])
+    agent_slugs = data.get("agents", [])
     ui_session_id = data.get("ui_session_id")
 
     if not message:
@@ -102,6 +113,7 @@ def chat():
             skill_slugs=skill_slugs,
             ui_session_id=ui_session_id,
             mcp_slugs=mcp_slugs,
+            agent_slugs=agent_slugs,
         )
         return jsonify({"reply": reply})
     except Exception as e:
@@ -117,6 +129,7 @@ def chat_stream():
     resumed_session_id = data.get("resumed_session_id")
     skill_slugs = data.get("skills", [])
     mcp_slugs = data.get("mcps", [])
+    agent_slugs = data.get("agents", [])
     ui_session_id = data.get("ui_session_id")
 
     if not message:
@@ -130,6 +143,7 @@ def chat_stream():
                 skill_slugs=skill_slugs,
                 ui_session_id=ui_session_id,
                 mcp_slugs=mcp_slugs,
+                agent_slugs=agent_slugs,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:

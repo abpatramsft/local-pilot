@@ -14,6 +14,8 @@ A self-hosted agent chat application that wraps the **GitHub Copilot SDK** behin
 - **Remote access via ngrok** — run the server locally, get a public HTTPS URL, and chat from your phone/tablet/any browser on earth
 - **Streaming responses** — real-time Server-Sent Events (SSE) streaming with tool-call visibility (start/complete/error)
 - **Skills** — add skill directories under `skills/` with a `SKILL.md` to give the agent domain-specific knowledge (code review, security audit, testing, docs writing)
+- **MCP Servers** — connect external tool servers via `mcp.json` (e.g., Work IQ, database tools) — the agent can invoke their tools during conversations
+- **Custom Agents** — define specialised agent personas in `agents.json` with custom prompts, dedicated tools, and embedded MCP servers (e.g., a web-search agent, a work-iq agent)
 - **Local session browser** — fetch, view, and resume past Copilot CLI sessions directly from the UI
 - **Single-file UI** — a dark-themed, mobile-responsive chat interface in one `index.html` — no build step required
 - **Workspace sandbox** — file operations default to the `pilot_folder/` directory for safety
@@ -107,6 +109,8 @@ local-pilot/
 ├── twilio_config.py       # Twilio credentials (⚠ do not commit)
 ├── index.html             # Self-contained chat UI (HTML + CSS + JS)
 ├── requirements.txt       # Python dependencies
+├── mcp.json               # MCP server configurations
+├── agents.json            # Custom agent definitions (prompts, tools, MCPs)
 ├── skills/                # Skill directories (each has a SKILL.md)
 │   ├── code-review/
 │   ├── docs-writer/
@@ -124,6 +128,8 @@ local-pilot/
 | `POST` | `/chat` | Send a message, get a full reply (non-streaming) |
 | `POST` | `/chat/stream` | Send a message, receive SSE stream with deltas + tool events |
 | `GET` | `/skills` | List available skills |
+| `GET` | `/mcps` | List available MCP servers |
+| `GET` | `/agents` | List available custom agents |
 | `GET` | `/local-sessions` | List previously fetched Copilot CLI sessions |
 | `POST` | `/local-sessions/fetch` | Trigger a fresh fetch of sessions from Copilot CLI |
 | `GET` | `/local-sessions/<id>` | Get full conversation for a local session |
@@ -144,6 +150,57 @@ When performing code reviews, follow this structured approach...
 ```
 
 Skills appear in the **# Skills** dropdown and inject domain-specific instructions into the agent.
+
+## MCP Servers
+
+Configure external tool servers in `mcp.json`:
+
+```json
+{
+  "workiq": {
+    "command": "npx",
+    "args": ["-y", "@microsoft/workiq", "mcp"]
+  }
+}
+```
+
+Each key becomes a selectable MCP server in the **⚡ MCPs** dropdown. The agent can invoke tools provided by these servers during conversations.
+
+## Custom Agents
+
+Define specialised agent personas in `agents.json`:
+
+```json
+{
+  "web-search": {
+    "name": "Web Search",
+    "description": "Agent with web browsing capabilities",
+    "prompt": "You are a research assistant with web access...",
+    "tools": ["web_fetch"]
+  },
+  "work-iq": {
+    "name": "Work IQ",
+    "description": "Agent powered by Microsoft Work IQ",
+    "prompt": "You are an intelligent work assistant...",
+    "mcp_servers": {
+      "workiq": {
+        "command": "npx",
+        "args": ["-y", "@microsoft/workiq", "mcp"]
+      }
+    }
+  }
+}
+```
+
+Each key becomes a selectable agent in the **🤖 Agents** dropdown. Agents can have:
+
+| Field | Description |
+|---|---|
+| `name` | Display name in the UI |
+| `description` | Short description shown in the dropdown |
+| `prompt` | System prompt that defines the agent's persona and behaviour |
+| `tools` | List of built-in tool names the agent should use (e.g., `web_fetch`) |
+| `mcp_servers` | Embedded MCP server configs that are activated when this agent is selected |
 
 ## Configuration
 
@@ -234,12 +291,18 @@ You should see in the terminal:
 |---|---|
 | *(any text)* | Chat with the agent |
 | `/skills` | List available skills |
+| `/mcps` | List available MCP servers |
+| `/agents` | List available custom agents |
 | `/use #code-review #testing` | Select skills for your session |
+| `/use %workiq` | Select MCP servers for your session |
+| `/use @web-search` | Select custom agents for your session |
 | `/config` | Show current session config |
 | `/sessions` | List recent local Copilot sessions |
 | `/resume <id>` | Resume a past session |
 | `/new` | Start a fresh session |
 | `/help` | Show command list |
+
+> **Tip**: You can mix prefixes in a single command: `/use #code-review %workiq @web-search`
 
 ### How It Works
 
