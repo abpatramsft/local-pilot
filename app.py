@@ -7,7 +7,7 @@ import json
 import threading
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-from agent import ask_agent, ask_agent_streaming, load_agents, list_skill_directories
+from agent import ask_agent, ask_agent_streaming, load_agents, list_skill_directories, list_mcp_servers
 from local_sessions import list_local_sessions, get_session_messages, fetch_sessions_sync
 from whatsapp import register_whatsapp_routes
 
@@ -82,6 +82,16 @@ def list_skills_endpoint():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/mcps", methods=["GET"])
+def list_mcps_endpoint():
+    """Return list of available MCP servers from mcp.json."""
+    try:
+        mcps = list_mcp_servers()
+        return jsonify({"mcps": mcps})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     data    = request.json or {}
@@ -90,6 +100,7 @@ def chat():
     resumed_session_id = data.get("resumed_session_id")
     agent_slugs = data.get("agents", [])
     skill_slugs = data.get("skills", [])
+    mcp_slugs = data.get("mcps", [])
     ui_session_id = data.get("ui_session_id")
 
     if not message:
@@ -102,6 +113,7 @@ def chat():
             agent_slugs=agent_slugs,
             skill_slugs=skill_slugs,
             ui_session_id=ui_session_id,
+            mcp_slugs=mcp_slugs,
         )
         return jsonify({"reply": reply})
     except Exception as e:
@@ -117,6 +129,7 @@ def chat_stream():
     resumed_session_id = data.get("resumed_session_id")
     agent_slugs = data.get("agents", [])
     skill_slugs = data.get("skills", [])
+    mcp_slugs = data.get("mcps", [])
     ui_session_id = data.get("ui_session_id")
 
     if not message:
@@ -130,6 +143,7 @@ def chat_stream():
                 agent_slugs=agent_slugs,
                 skill_slugs=skill_slugs,
                 ui_session_id=ui_session_id,
+                mcp_slugs=mcp_slugs,
             ):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:

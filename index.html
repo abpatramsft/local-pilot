@@ -249,6 +249,7 @@
   }
   .hcfg-pill.agent { background: rgba(75,124,243,.12); color: #6b9cf8; border: 1px solid rgba(75,124,243,.2); }
   .hcfg-pill.skill { background: rgba(72,187,120,.1);  color: var(--green); border: 1px solid rgba(72,187,120,.2); }
+  .hcfg-pill.mcp   { background: rgba(236,153,75,.1);  color: #ec994b; border: 1px solid rgba(236,153,75,.2); }
 
   /* ══ Messages ═════════════════════════════════ */
   #messages {
@@ -443,6 +444,7 @@
   }
   .cfg-pill.agent { background: rgba(75,124,243,.12); border: 1px solid rgba(75,124,243,.25); color: #6b9cf8; }
   .cfg-pill.skill { background: rgba(72,187,120,.1);  border: 1px solid rgba(72,187,120,.2);  color: var(--green); }
+  .cfg-pill.mcp   { background: rgba(236,153,75,.1);  border: 1px solid rgba(236,153,75,.25); color: #ec994b; }
   .cfg-pill .px { opacity: .5; cursor: pointer; font-size: 13px; transition: opacity .12s; }
   .cfg-pill .px:hover { opacity: 1; }
   .cfg-pill.locked .px { display: none; }
@@ -620,6 +622,16 @@
             <span class="cfg-count" id="skill-count" style="display:none">0</span>
           </button>
         </div>
+        <div class="cfg-sel" id="mcp-sel">
+          <div class="cfg-dd" id="mcp-dd">
+            <div class="cfg-dd-hdr">MCP Servers</div>
+            <div id="mcp-opts"></div>
+          </div>
+          <button class="cfg-trigger" onclick="toggleDD('mcp')">
+            <span>⚡ MCPs</span>
+            <span class="cfg-count" id="mcp-count" style="display:none">0</span>
+          </button>
+        </div>
         <div class="cfg-pills" id="cfg-pills"></div>
       </div>
 
@@ -644,6 +656,7 @@ let localSessions   = [];
 let activeLocalId   = null;
 let availableAgents = [];
 let availableSkills = [];
+let availableMcps   = [];
 
 const save    = () => localStorage.setItem('ac2_sessions', JSON.stringify(sessions));
 const getSess = id  => sessions.find(s => s.id === id);
@@ -673,7 +686,7 @@ function closeSidebar() {
 function newSession() {
   const id    = 'sess_' + Date.now();
   const label = 'Session ' + new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
-  sessions.unshift({ id, label, messages: [], agents: [], skills: [], configLocked: false });
+  sessions.unshift({ id, label, messages: [], agents: [], skills: [], mcps: [], configLocked: false });
   save(); renderSidebar(); selectSession(id);
 }
 
@@ -902,6 +915,7 @@ async function sendMessage() {
       history: s.messages.slice(0, -1),
       agents:  s.agents  || [],
       skills:  s.skills  || [],
+      mcps:    s.mcps    || [],
       ui_session_id: s.id,
     };
     if (s.resumedFrom) body.resumed_session_id = s.resumedFrom;
@@ -990,6 +1004,7 @@ document.getElementById('endpoint-url').addEventListener('change', pingEndpoint)
 const closeDD = e => {
   if (!e.target.closest('#agent-sel')) document.getElementById('agent-dd').classList.remove('open');
   if (!e.target.closest('#skill-sel')) document.getElementById('skill-dd').classList.remove('open');
+  if (!e.target.closest('#mcp-sel'))   document.getElementById('mcp-dd').classList.remove('open');
 };
 document.addEventListener('click', closeDD);
 document.addEventListener('touchstart', closeDD, { passive: true });
@@ -1054,7 +1069,7 @@ async function selectLocalSession(id) {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     const sid = 'local_' + id.slice(0,8) + '_' + Date.now();
-    sessions.unshift({ id: sid, label: '📂 ' + (d.summary||'Local Session'), messages: d.messages||[], resumedFrom: id, agents:[], skills:[], configLocked: false });
+    sessions.unshift({ id: sid, label: '📂 ' + (d.summary||'Local Session'), messages: d.messages||[], resumedFrom: id, agents:[], skills:[], mcps:[], configLocked: false });
     save(); renderSidebar(); selectSession(sid);
   } catch (err) { showError('Failed: ' + err.message); }
 }
@@ -1074,10 +1089,17 @@ async function loadSkills() {
     if (r.ok) availableSkills = (await r.json()).skills || [];
   } catch {}
 }
+async function loadMcps() {
+  const base = document.getElementById('endpoint-url').value.trim().replace(/\/chat\/?$/, '');
+  try {
+    const r = await fetch(base + '/mcps', { headers: { 'ngrok-skip-browser-warning': '1' }, signal: AbortSignal.timeout(3000) });
+    if (r.ok) availableMcps = (await r.json()).mcps || [];
+  } catch {}
+}
 
 function renderConfigBar() {
   const s = getSess(activeId); if (!s) return;
-  renderAgentOpts(); renderSkillOpts(); renderPills(); updateTriggers(); renderHeaderConfig(s);
+  renderAgentOpts(); renderSkillOpts(); renderMcpOpts(); renderPills(); updateTriggers(); renderHeaderConfig(s);
 }
 
 function renderHeaderConfig(s) {
@@ -1091,6 +1113,10 @@ function renderHeaderConfig(s) {
   (s.skills||[]).forEach(slug => {
     const sk = availableSkills.find(x=>x.slug===slug);
     html += `<span class="hcfg-pill skill">#${esc(sk?.name||slug)}</span>`;
+  });
+  (s.mcps||[]).forEach(slug => {
+    const m = availableMcps.find(x=>x.slug===slug);
+    html += `<span class="hcfg-pill mcp">⚡${esc(m?.name||slug)}</span>`;
   });
   el.innerHTML = html;
 }
@@ -1144,6 +1170,30 @@ function removeSkill(slug) {
   save(); renderSkillOpts(); renderPills(); updateTriggers(); renderHeaderConfig(s);
 }
 
+function renderMcpOpts() {
+  const s = getSess(activeId), sel = s?.mcps||[], locked = s?.configLocked||false;
+  const el = document.getElementById('mcp-opts');
+  if (!availableMcps.length) { el.innerHTML = '<div class="cfg-empty">No MCP servers found</div>'; return; }
+  el.innerHTML = availableMcps.map(m => {
+    const on = sel.includes(m.slug);
+    return `<div class="cfg-opt ${on?'sel':''} ${locked?'locked':''}" onclick="${locked?'':` toggleMcp('${m.slug}')`}">
+      <div class="cfg-chk">${on?'✓':''}</div>
+      <div class="cfg-info"><div class="cfg-name">⚡ ${esc(m.name||m.slug)}</div><div class="cfg-desc">${esc(m.description||'')}</div></div>
+    </div>`;
+  }).join('');
+}
+function toggleMcp(slug) {
+  const s = getSess(activeId); if (!s||s.configLocked) return;
+  if (!s.mcps) s.mcps = [];
+  const i = s.mcps.indexOf(slug); if (i>=0) s.mcps.splice(i,1); else s.mcps.push(slug);
+  save(); renderMcpOpts(); renderPills(); updateTriggers(); renderHeaderConfig(s);
+}
+function removeMcp(slug) {
+  const s = getSess(activeId); if (!s||s.configLocked) return;
+  s.mcps = (s.mcps||[]).filter(x=>x!==slug);
+  save(); renderMcpOpts(); renderPills(); updateTriggers(); renderHeaderConfig(s);
+}
+
 function renderPills() {
   const s = getSess(activeId); const el = document.getElementById('cfg-pills');
   if (!s) { el.innerHTML = ''; return; }
@@ -1157,36 +1207,50 @@ function renderPills() {
     const sk = availableSkills.find(x=>x.slug===slug);
     html += `<span class="cfg-pill skill ${locked?'locked':''}">@${esc(sk?.name||slug)}<span class="px" onclick="removeSkill('${slug}')">×</span></span>`;
   });
+  (s.mcps||[]).forEach(slug => {
+    const m = availableMcps.find(x=>x.slug===slug);
+    html += `<span class="cfg-pill mcp ${locked?'locked':''}">⚡${esc(m?.name||slug)}<span class="px" onclick="removeMcp('${slug}')">×</span></span>`;
+  });
   el.innerHTML = html;
 }
 
 function updateTriggers() {
   const s = getSess(activeId);
-  const agents = s?.agents||[], skills = s?.skills||[], locked = s?.configLocked||false;
+  const agents = s?.agents||[], skills = s?.skills||[], mcps = s?.mcps||[], locked = s?.configLocked||false;
   const ab = document.querySelector('#agent-sel .cfg-trigger');
   const sb = document.querySelector('#skill-sel .cfg-trigger');
+  const mb = document.querySelector('#mcp-sel .cfg-trigger');
   ab.classList.toggle('active', agents.length>0);
   sb.classList.toggle('active', skills.length>0);
+  mb.classList.toggle('active', mcps.length>0);
   ab.classList.toggle('locked', locked);
   sb.classList.toggle('locked', locked);
+  mb.classList.toggle('locked', locked);
   const ac = document.getElementById('agent-count');
   const sc = document.getElementById('skill-count');
+  const mc = document.getElementById('mcp-count');
   ac.textContent = agents.length; ac.style.display = agents.length ? 'inline':'none';
   sc.textContent = skills.length; sc.style.display = skills.length ? 'inline':'none';
+  mc.textContent = mcps.length;   mc.style.display = mcps.length   ? 'inline':'none';
 }
 
 function toggleDD(type) {
   const s = getSess(activeId); if (s?.configLocked) return;
   const add = document.getElementById('agent-dd');
   const sdd = document.getElementById('skill-dd');
+  const mdd = document.getElementById('mcp-dd');
   if (type === 'agent') {
     const open = add.classList.contains('open');
-    add.classList.toggle('open', !open); sdd.classList.remove('open');
+    add.classList.toggle('open', !open); sdd.classList.remove('open'); mdd.classList.remove('open');
     if (!open) renderAgentOpts();
-  } else {
+  } else if (type === 'skill') {
     const open = sdd.classList.contains('open');
-    sdd.classList.toggle('open', !open); add.classList.remove('open');
+    sdd.classList.toggle('open', !open); add.classList.remove('open'); mdd.classList.remove('open');
     if (!open) renderSkillOpts();
+  } else {
+    const open = mdd.classList.contains('open');
+    mdd.classList.toggle('open', !open); add.classList.remove('open'); sdd.classList.remove('open');
+    if (!open) renderMcpOpts();
   }
 }
 
@@ -1197,6 +1261,7 @@ pingEndpoint();
 loadLocalSessions(true);
 loadAgents();
 loadSkills();
+loadMcps();
 setInterval(pingEndpoint, 30000);
 </script>
 </body>

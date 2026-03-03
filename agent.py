@@ -31,9 +31,10 @@ WORKSPACE_DIR = os.environ.get("COPILOT_WORKSPACE", _DEFAULT_WORKSPACE)
 # Ensure the workspace folder exists
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
 
-# Directories for custom agents and skills
+# Directories for custom agents, skills, and MCP config
 AGENTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agents")
 SKILLS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "skills")
+MCP_CONFIG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mcp.json")
 
 # System message that instructs the agent about workspace behavior
 SYSTEM_MESSAGE = f"""You are a helpful coding assistant.
@@ -60,6 +61,31 @@ def load_agents() -> list[dict]:
             except (json.JSONDecodeError, IOError):
                 pass
     return agents
+
+
+def load_mcp_servers() -> dict:
+    """Load MCP server configurations from mcp.json."""
+    if not os.path.isfile(MCP_CONFIG_FILE):
+        return {}
+    try:
+        with open(MCP_CONFIG_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data.get("servers", {})
+    except (json.JSONDecodeError, IOError):
+        return {}
+
+
+def list_mcp_servers() -> list[dict]:
+    """Return a list of available MCP servers with their metadata."""
+    servers = load_mcp_servers()
+    result = []
+    for slug, cfg in servers.items():
+        result.append({
+            "slug": cfg.get("slug", slug),
+            "name": cfg.get("name", slug),
+            "description": cfg.get("description", ""),
+        })
+    return result
 
 
 def list_skill_directories() -> list[dict]:
@@ -138,6 +164,7 @@ async def _get_or_create_session(
     client: CopilotClient, conversation_key: str,
     agent_slugs: list[str] | None = None,
     skill_slugs: list[str] | None = None,
+    mcp_slugs: list[str] | None = None,
 ):
     """Get existing session or create a new one for this conversation."""
     global _sessions
@@ -167,6 +194,22 @@ async def _get_or_create_session(
             if disabled:
                 config["disabled_skills"] = disabled
 
+        # Add MCP servers if selected
+        if mcp_slugs:
+            all_mcps = load_mcp_servers()
+            mcp_servers = {}
+            for slug in mcp_slugs:
+                if slug in all_mcps:
+                    cfg = all_mcps[slug]
+                    mcp_servers[slug] = {
+                        "type": cfg.get("type", "local"),
+                        "command": cfg["command"],
+                        "args": cfg.get("args", []),
+                        "tools": cfg.get("tools", ["*"]),
+                    }
+            if mcp_servers:
+                config["mcp_servers"] = mcp_servers
+
         session = await client.create_session(config)
         _sessions[conversation_key] = session
     return _sessions[conversation_key]
@@ -194,6 +237,7 @@ async def _ask_agent_streaming_async(
     agent_slugs: list[str] | None = None,
     skill_slugs: list[str] | None = None,
     ui_session_id: str | None = None,
+    mcp_slugs: list[str] | None = None,
 ):
     """
     Async implementation that streams events via a queue.
@@ -206,13 +250,14 @@ async def _ask_agent_streaming_async(
         agent_slugs : list of agent slugs to enable as sub-agents
         skill_slugs : list of skill slugs to load
         ui_session_id : UI session ID for stable session caching
+        mcp_slugs : list of MCP server slugs to connect
     """
     client = await _ensure_client()
     if resumed_session_id:
         session = await _get_or_resume_session(client, resumed_session_id)
     else:
         conversation_key = ui_session_id or _get_conversation_key(history)
-        session = await _get_or_create_session(client, conversation_key, agent_slugs, skill_slugs)
+        session = await _get_or_create_session(client, conversation_key, agent_slugs, skill_slugs, mcp_slugs)
     
     content_parts = []
     
@@ -263,6 +308,7 @@ async def _ask_agent_async(
     agent_slugs: list[str] | None = None,
     skill_slugs: list[str] | None = None,
     ui_session_id: str | None = None,
+    mcp_slugs: list[str] | None = None,
 ) -> str:
     """
     Async implementation that uses the Copilot SDK.
@@ -274,6 +320,7 @@ async def _ask_agent_async(
         agent_slugs : list of agent slugs to enable as sub-agents
         skill_slugs : list of skill slugs to load
         ui_session_id : UI session ID for stable session caching
+        mcp_slugs : list of MCP server slugs to connect
 
     Returns:
         Agent's reply as a string
@@ -284,7 +331,7 @@ async def _ask_agent_async(
         session = await _get_or_resume_session(client, resumed_session_id)
     else:
         conversation_key = ui_session_id or _get_conversation_key(history)
-        session = await _get_or_create_session(client, conversation_key, agent_slugs, skill_slugs)
+        session = await _get_or_create_session(client, conversation_key, agent_slugs, skill_slugs, mcp_slugs)
     
     # Send the current message - session automatically maintains context
     response = await session.send_and_wait({"prompt": message}, 600000)  # 10 min timeout (ms)
@@ -297,6 +344,7 @@ def ask_agent_streaming(
     agent_slugs: list[str] | None = None,
     skill_slugs: list[str] | None = None,
     ui_session_id: str | None = None,
+    mcp_slugs: list[str] | None = None,
 ):
     """
     Generator that yields streaming events from the agent.
@@ -311,7 +359,7 @@ def ask_agent_streaming(
     future = asyncio.run_coroutine_threadsafe(
         _ask_agent_streaming_async(
             message, history, event_queue, resumed_session_id,
-            agent_slugs, skill_slugs, ui_session_id,
+            agent_slugs, skill_slugs, ui_session_id, mcp_slugs,
         ),
         loop
     )
@@ -338,6 +386,7 @@ def ask_agent(
     agent_slugs: list[str] | None = None,
     skill_slugs: list[str] | None = None,
     ui_session_id: str | None = None,
+    mcp_slugs: list[str] | None = None,
 ) -> str:
     """
     Synchronous wrapper for the async Copilot SDK call.
@@ -357,7 +406,7 @@ def ask_agent(
     future = asyncio.run_coroutine_threadsafe(
         _ask_agent_async(
             message, history, resumed_session_id,
-            agent_slugs, skill_slugs, ui_session_id,
+            agent_slugs, skill_slugs, ui_session_id, mcp_slugs,
         ), loop
     )
     return future.result(timeout=300)  # 5 minute timeout for long-running tasks

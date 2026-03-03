@@ -1,0 +1,13 @@
+{
+  "servers": {
+    "workiq": {
+      "slug": "workiq",
+      "name": "Work IQ",
+      "description": "Query Microsoft 365 data — emails, meetings, documents, Teams messages, and people via the Work IQ MCP server.",
+      "type": "local",
+      "command": "npx",
+      "args": ["-y", "@microsoft/workiq", "mcp"],
+      "tools": ["*"]
+    }
+  }
+}
