@@ -143,14 +143,15 @@ def _handle_use(args: str, session: dict) -> str:
     if not new_skills and not new_mcps and not new_agents:
         return "Usage: */use #skill-slug %mcp-slug @agent-slug*\nExample: */use #code-review %workiq @web-search*"
 
+    # Show only what was changed
     parts = []
-    if session["skills"]:
-        parts.append("Skills: " + ", ".join(f"#{s}" for s in session["skills"]))
-    if session["mcps"]:
-        parts.append("MCPs: " + ", ".join(f"%{s}" for s in session["mcps"]))
-    if session["agents"]:
-        parts.append("Agents: " + ", ".join(f"@{a}" for a in session["agents"]))
-    return "✅ Session updated.\n" + "\n".join(parts)
+    if new_skills:
+        parts.append("Skills → " + ", ".join(f"#{s}" for s in new_skills))
+    if new_mcps:
+        parts.append("MCPs → " + ", ".join(f"%{s}" for s in new_mcps))
+    if new_agents:
+        parts.append("Agents → " + ", ".join(f"@{a}" for a in new_agents))
+    return "✅ Updated.\n" + "\n".join(parts)
 
 
 def _handle_config(session: dict) -> str:
