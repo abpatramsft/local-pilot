@@ -13,7 +13,6 @@ A self-hosted agent chat application that wraps the **GitHub Copilot SDK** behin
 
 - **Remote access via ngrok** — run the server locally, get a public HTTPS URL, and chat from your phone/tablet/any browser on earth
 - **Streaming responses** — real-time Server-Sent Events (SSE) streaming with tool-call visibility (start/complete/error)
-- **Custom agents** — drop JSON configs into `agents/` to add specialized personas (architect, debugger, code-reviewer, teacher)
 - **Skills** — add skill directories under `skills/` with a `SKILL.md` to give the agent domain-specific knowledge (code review, security audit, testing, docs writing)
 - **Local session browser** — fetch, view, and resume past Copilot CLI sessions directly from the UI
 - **Single-file UI** — a dark-themed, mobile-responsive chat interface in one `index.html` — no build step required
@@ -108,11 +107,6 @@ local-pilot/
 ├── twilio_config.py       # Twilio credentials (⚠ do not commit)
 ├── index.html             # Self-contained chat UI (HTML + CSS + JS)
 ├── requirements.txt       # Python dependencies
-├── agents/                # Custom agent persona definitions
-│   ├── architect.json
-│   ├── code-reviewer.json
-│   ├── debugger.json
-│   └── teacher.json
 ├── skills/                # Skill directories (each has a SKILL.md)
 │   ├── code-review/
 │   ├── docs-writer/
@@ -129,26 +123,10 @@ local-pilot/
 | `GET` | `/health` | Health check — returns `{"status": "ok"}` |
 | `POST` | `/chat` | Send a message, get a full reply (non-streaming) |
 | `POST` | `/chat/stream` | Send a message, receive SSE stream with deltas + tool events |
-| `GET` | `/agents` | List available custom agents |
 | `GET` | `/skills` | List available skills |
 | `GET` | `/local-sessions` | List previously fetched Copilot CLI sessions |
 | `POST` | `/local-sessions/fetch` | Trigger a fresh fetch of sessions from Copilot CLI |
 | `GET` | `/local-sessions/<id>` | Get full conversation for a local session |
-
-## Custom Agents
-
-Add a JSON file to the `agents/` directory:
-
-```json
-{
-  "slug": "architect",
-  "display_name": "Software Architect",
-  "description": "Helps design systems, APIs, and data models",
-  "prompt": "You are an experienced software architect. Help with system design..."
-}
-```
-
-Agents appear in the **@ Agents** dropdown in the chat UI and can be toggled per session.
 
 ## Skills
 
@@ -179,7 +157,7 @@ Skills appear in the **# Skills** dropdown and inject domain-specific instructio
 
 ## WhatsApp Integration (via Twilio)
 
-You can chat with the agent from WhatsApp using the Twilio sandbox — same agents, skills, sessions, all from your phone.
+You can chat with the agent from WhatsApp using the Twilio sandbox — same skills, sessions, all from your phone.
 
 ### Setup
 
@@ -255,9 +233,7 @@ You should see in the terminal:
 | Command | Action |
 |---|---|
 | *(any text)* | Chat with the agent |
-| `/agents` | List available agents |
 | `/skills` | List available skills |
-| `/use @architect @debugger` | Select agents for your session |
 | `/use #code-review #testing` | Select skills for your session |
 | `/config` | Show current session config |
 | `/sessions` | List recent local Copilot sessions |
@@ -267,7 +243,7 @@ You should see in the terminal:
 
 ### How It Works
 
-- Each phone number gets its own session state (history, selected agents/skills)
+- Each phone number gets its own session state (history, selected skills)
 - If the agent replies within ~12 seconds, the response is returned inline
 - If it takes longer, you get a "⏳ Thinking..." message and the real reply is delivered asynchronously via the Twilio REST API
 - Replies are truncated to ~1500 characters to stay within WhatsApp limits
