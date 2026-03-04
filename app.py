@@ -10,7 +10,6 @@ from flask_cors import CORS
 from agent import ask_agent, ask_agent_streaming, list_skill_directories, list_mcp_servers, list_custom_agents, list_available_models, get_default_model
 from local_sessions import list_local_sessions, get_session_messages, fetch_sessions_sync
 from whatsapp import register_whatsapp_routes
-
 from teams import register_teams_routes
 
 app = Flask(__name__)
@@ -19,7 +18,7 @@ CORS(app)  # required so the HTML file (file://) can call localhost
 # Register WhatsApp webhook (only activates if twilio_config.py is filled in)
 register_whatsapp_routes(app)
 
-# Register Teams
+# Register Teams azure bot ((only activates if teams_config.py is filled in))
 register_teams_routes(app)
 
 
